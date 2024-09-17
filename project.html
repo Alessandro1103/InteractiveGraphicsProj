@@ -494,7 +494,6 @@ class Skybox
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
 		gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 
-		// Create and configure the texture
 		this.texture = gl.createTexture();
 		gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.texture);
 
@@ -535,7 +534,6 @@ class Skybox
 	}
 	draw(trans)
 	{
-		// Compute viewDirectionProjectionInverseMatrix
 		UpdateProjectionMatrix();
 		let viewDirectionProjectionMatrix = mat4.create();
 		mat4.multiply(viewDirectionProjectionMatrix, perspectiveMatrix, trans.worldToCam);
@@ -543,19 +541,15 @@ class Skybox
 		let viewDirectionProjectionInverseMatrix = mat4.create();
 		mat4.invert(viewDirectionProjectionInverseMatrix, viewDirectionProjectionMatrix);
 
-		// Set up the program and bind buffers
 		gl.useProgram(this.prog);
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
 
-		// Configure the position attribute
 		gl.enableVertexAttribArray(this.positionLocation);
 		gl.vertexAttribPointer(this.positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-		// Set the uniforms
 		gl.uniformMatrix4fv(this.viewDirectionProjectionInverseLocation, false, viewDirectionProjectionInverseMatrix);
 		gl.uniform1i(this.skyboxLocation, 0);
 
-		// Set the depth function and draw the skybox
 		gl.depthFunc(gl.LEQUAL);
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 	}
@@ -709,10 +703,8 @@ class MassSpring {
 			}
 		}
 		
-		// update the position buffer
 		updateBuffer( this.buffers.positionBuffer, this.mesh.face, this.pos );
 		
-		// update normals
 		for ( var i=0; i<this.nrm.length; ++i ) this.nrm[i].init(0,0,0);
 		for ( var i=0; i<this.mesh.face.length; ++i ) {
 			var f = this.mesh.face[i];
@@ -741,14 +733,12 @@ class MassSpring {
 		let flagCollision = false;
 		let boundingBoxes = [];
 
-		// Ricorda la posizione del vertice selezionato, se presente
 		var p = this.holdVert ? this.holdVert.copy() : undefined;
 
 		UpdateProjectionMatrix();
 
-		// Aggiorna posizioni e velocità
 		var timestep = document.getElementById('timestep').value;
-		const dt = timestep / 1000;  // time step in seconds
+		const dt = timestep / 1000;
 		const damping = this.damping * this.stiffness * dt;
 
 		let cBoundingBox = this.currentBoundingBox();
@@ -757,21 +747,35 @@ class MassSpring {
 				let otherBoundingBox = massSprings[i].currentBoundingBox();
 				if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
 					flagCollision = true;
-					boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
-					// console.log(this, massSprings[i]);
+					boundingBoxes.push(otherBoundingBox);
 				}
 			}
 		}
 
-		if (flagCollision && this instanceof Ball) {
-			// console.log(this.gravity.y);
-			this.gravity.y = 0;
-			// console.log(this.gravity.y);
+		// if (flagCollision && this instanceof Ball) 
+		// {
+		// 	this.gravity.z = 0;
+		// }
+		
+		if (this instanceof Pin) {
+			console.log("Type", "Pin");
+		} else if (this instanceof Ball) {
+			console.log("Type", "Ball");
+		} else if (this instanceof Floor) {
+			console.log("Type", "Floor");
 		}
+
+		console.log("Gravity: ", this.gravity);
+		console.log("Mass: ", this.mass);
+		console.log("Stiffness: ", this.stiffness);
+		console.log("Damping: ", this.damping);
+		console.log("Restitution: ", this.restitution);
+
 
 		SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
 
-		if (p) {
+		if (p) 
+		{
 			this.holdVert.set(p);
 			this.vel[this.selVert].init(0, 0, 0);
 		}
