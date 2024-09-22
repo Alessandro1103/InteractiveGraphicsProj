@@ -19,9 +19,10 @@ var perspectiveMatrix;
 var rotX=0, rotY=0, transY=0, transZ=40;
 var MV, MVP;
 var verticesArray = [];
-var offsetVertices = [];
+var offsetVertices = [0];
 var springsArray = [];
 var massArray = [];
+var b = [];
 let isPlaying = false;
 let isBallMoving = false;
 let keydownListenerMove;
@@ -333,7 +334,7 @@ class MeshDrawer
         this.numTriangles = 0;
 	}
 	setMesh(vertPos, texCoords, normals) {
-
+		
 		verticesArray.push(vertPos);
 		offsetVertices.push(vertPos.length);
 		
@@ -686,11 +687,17 @@ class MassSpring {
 		this.initialPosition = initialPosition;
 		this.setMesh( objdef );
 		this.setMass();
+		this.setInitialB();
+	}
+	setInitialB()
+	{
+		for (let i = 0; i < offsetVertices[-1]; i++) {
+			b.push(this.gravity);
+		}		
 	}
 	setMass()
 	{
-		console.log("Object: ", this,"setMass: ", this.pos.length);
-		for (let i = 0; i < this.pos.length; i++) {
+		for (let i = 0; i < verticesArray.legth; i++) {
 			massArray.push(this.mass);
 		}
 	}
@@ -1097,7 +1104,7 @@ class Floor extends MassSpring {
 	function startSimulation() 
 	{
 		var timestep = document.getElementById('timestep').value;
-		if (!this.isSimulationRunning()) {
+		if (!isSimulationRunning()) {
 				timer = setInterval(function() {
 				Simulation();
 			}, timestep);
@@ -1107,30 +1114,30 @@ class Floor extends MassSpring {
 	function stopSimulation() 
 	{
 		clearInterval(this.timer);
-		this.timer = undefined;
+		timer = undefined;
 	}
 
 	function isSimulationRunning() 
 	{
-		return this.timer !== undefined;
+		return timer !== undefined;
 	}
 
 	function restartSimulation() 
 	{
-		if ( this.isSimulationRunning() ) 
+		if ( isSimulationRunning() ) 
 		{ 
-			this.stopSimulation(); 
-			this.startSimulation(); 
+			stopSimulation(); 
+			startSimulation(); 
 		} 
 	}
 
 	function toggleSimulation(btn) 
 	{
-		if (this.isSimulationRunning()) {
-			this.stopSimulation();
+		if (isSimulationRunning()) {
+			stopSimulation();
 			btn.value = "Start Simulation";
 		} else {
-			this.startSimulation();
+			startSimulation();
 			btn.value = "Stop Simulation";
 		}
 	}
@@ -1165,7 +1172,7 @@ class Floor extends MassSpring {
 		
 		for (let iter = 0; iter < maxIterations; iter++) {
 			// Local step: minimizza rispetto a d
-			d = costFunctionLocalApproximated(x, L, J);
+			d = costFunctionstartSimulationLocalApproximated(x, L, J);
 			
 			// Global step: minimizza rispetto a x
 			let grad = gradient(x, M, L, h, J, d, b);
@@ -1173,7 +1180,7 @@ class Floor extends MassSpring {
 				x[i] = x[i] - learningRate * grad[i];
 			}
 			
-			console.log(`Iterazione ${iter + 1}: Costo globale = ${costFunctionGlobal(x, M, L, h, J, d, b)}`);
+			// console.log(`Iterazione ${iter + 1}: Costo globale = ${costFunctionGlobal(x, M, L, h, J, d, b)}`);
 			
 			if (math.norm(grad) < 1e-6) break;
 		}
@@ -1184,14 +1191,14 @@ class Floor extends MassSpring {
 	function computeMassMatrix() 
 	{
 		let M = math.diag(massArray);
-		console.log("M size: ", math.size(M));
+		// console.log("M size: ", math.size(M));
 		return M;
 	}
 
 	function computeLaplacianMatrix() 
 	{
         let L = math.zeros(verticesArray.length, verticesArray.length);
-		console.log("L size: ", L.size());
+		// console.log("L size: ", L.size());
         for (let spring of springsArray) {
             let p0 = spring.p0, p1 = spring.p1;
             L.set([p0, p0], L.get([p0, p0]) + stiffness);  // Rigidità sulla diagonale
@@ -1205,7 +1212,7 @@ class Floor extends MassSpring {
 	function computeIncidenceMatrix() 
 	{
         let J = math.zeros(verticesArray.length, springsArray.length);
-		console.log("J size", J.size());
+		// console.log("J size", J.size());
         for (let i = 0; i < springsArray.length; i++) {
             let spring = springsArray[i];
             let p0 = spring.p0, p1 = spring.p1;
@@ -1592,9 +1599,7 @@ function stopPlay() {
 
 	enableMouseInteractions();
 
-	for (let i = 0; i < massSprings.length; i++) {
-		massSprings[i].stopSimulation();
-	}
+	stopSimulation();
 
 	document.removeEventListener('keydown', keydownListenerMove);
     document.removeEventListener('keydown', keydownListenerSimulate);
