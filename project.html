@@ -5,6 +5,7 @@
 <script type="text/javascript" src="shaders.js"></script>
 <script type="text/javascript" src="obj.js"></script>
 <script type="text/javascript" src="objs.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.5.0/math.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"></script>
 <link rel="stylesheet" href="style.css">
 
@@ -19,10 +20,14 @@ var rotX=0, rotY=0, transY=0, transZ=40;
 var MV, MVP;
 var verticesArray = [];
 var offsetVertices = [];
+var springsArray = [];
+var massArray = [];
 let isPlaying = false;
 let isBallMoving = false;
 let keydownListenerMove;
 let keydownListenerSimulate;
+var timer;
+var M, L, J;
 
 
 
@@ -42,6 +47,10 @@ function InitWebGL() {
 	skybox = new Skybox();
 
 	InitMassSprings();
+
+	M = computeMassMatrix();
+	L = computeLaplacianMatrix();
+	J = computeIncidenceMatrix();
 
     UpdateCanvasSize();
 }
@@ -676,6 +685,14 @@ class MassSpring {
 		this.restitution = .8;
 		this.initialPosition = initialPosition;
 		this.setMesh( objdef );
+		this.setMass();
+	}
+	setMass()
+	{
+		console.log("Object: ", this,"setMass: ", this.pos.length);
+		for (let i = 0; i < this.pos.length; i++) {
+			massArray.push(this.mass);
+		}
 	}
 	setMesh( objdef )
 	{
@@ -796,75 +813,7 @@ class MassSpring {
 
 		DrawScene();
 	}
-	simTimeStep() {
-		let flagCollision = false;
-		let boundingBoxes = [];
 
-		// Ricorda la posizione del vertice selezionato, se presente
-		var p = this.holdVert ? this.holdVert.copy() : undefined;
-
-		UpdateProjectionMatrix();
-
-		// Aggiorna posizioni e velocità
-		var timestep = document.getElementById('timestep').value;
-		const dt = timestep / 1000;  // time step in seconds
-		const damping = this.damping * this.stiffness * dt;
-
-		let cBoundingBox = this.currentBoundingBox();
-		for (let i = 0; i < massSprings.length; i++) {
-			if (massSprings[i] !== this && !(massSprings[i] instanceof Floor)) {
-				let otherBoundingBox = massSprings[i].currentBoundingBox();
-				if (detectAABBCollision(cBoundingBox, otherBoundingBox)) {
-					flagCollision = true;
-					boundingBoxes.push(otherBoundingBox);  // Aggiungi la bounding box rilevata
-				}
-			}
-		}
-
-		if (flagCollision && this instanceof Ball) {
-			this.gravity.y = 0;
-		}
-
-		SimTimeStep(dt, this.pos, this.vel, this.springs, this.stiffness, damping, this.mass, this.gravity, this.restitution, flagCollision, boundingBoxes);
-
-		if (p) {
-			this.holdVert.set(p);
-			this.vel[this.selVert].init(0, 0, 0);
-		}
-
-		this.updateMesh();
-	}
-
-
-	startSimulation() {
-		var timestep = document.getElementById('timestep').value;
-		if (!this.isSimulationRunning()) {
-			this.timer = setInterval(function() {
-				for (let i = 0; i < massSprings.length; i++) {
-					massSprings[i].simTimeStep();
-				}
-			}, timestep);
-		}
-	}
-
-	stopSimulation()
-	{
-		clearInterval( this.timer );
-		this.timer = undefined;
-	}
-	isSimulationRunning() { return this.timer !== undefined; }
-	restartSimulation() { if ( this.isSimulationRunning() ) { this.stopSimulation(); this.startSimulation(); } }
-	toggleSimulation( btn )
-	{
-		if ( this.isSimulationRunning() ) {
-			this.stopSimulation();
-			btn.value = "Start Simulation";
-		} else {
-			this.startSimulation();
-			btn.value = "Stop Simulation";
-		}
-	}
-	
 	mouseMove()
 	{
 		var m = MousePos();
@@ -973,10 +922,6 @@ class Floor extends MassSpring {
         this.damping = 1;
         this.restitution = 0.8;
     }
-
-	simTimeStep() {
-		// il pavimento non si muove
-	}
 }
 
 
@@ -1146,6 +1091,150 @@ class Floor extends MassSpring {
 	///////////////////////////////////////////////////////////////////////////////////
 </script>
 	
+
+<script id="Simulation" type="text/javascript">
+	
+	function startSimulation() 
+	{
+		var timestep = document.getElementById('timestep').value;
+		if (!this.isSimulationRunning()) {
+				timer = setInterval(function() {
+				Simulation();
+			}, timestep);
+		}
+	}
+
+	function stopSimulation() 
+	{
+		clearInterval(this.timer);
+		this.timer = undefined;
+	}
+
+	function isSimulationRunning() 
+	{
+		return this.timer !== undefined;
+	}
+
+	function restartSimulation() 
+	{
+		if ( this.isSimulationRunning() ) 
+		{ 
+			this.stopSimulation(); 
+			this.startSimulation(); 
+		} 
+	}
+
+	function toggleSimulation(btn) 
+	{
+		if (this.isSimulationRunning()) {
+			this.stopSimulation();
+			btn.value = "Start Simulation";
+		} else {
+			this.startSimulation();
+			btn.value = "Stop Simulation";
+		}
+	}
+
+	function costFunctionGlobal(x, M, L, h, J, d, b) 
+	{
+		let term1 = 0.5 * math.dot(math.multiply(math.add(M, math.multiply(h ** 2, L)), x), x);
+		let term2 = h ** 2 * math.dot(math.multiply(J, d), x);
+		let term3 = math.dot(b, x);
+		
+		return term1 - term2 + term3;
+	}
+
+	function costFunctionLocal(x, L, J, f_ext) 
+	{
+		let term1 = 0.5 * math.dot(math.multiply(L, x), x);
+		let term2 = math.dot(math.multiply(J, x), x);  
+		let term3 = math.dot(f_ext, x); 
+
+		return term1 - term2 + term3;
+	}
+
+	function costFunctionLocalApproximated(x, L, J) 
+	{
+		let d = math.multiply(J, x);  
+		return d;
+	}
+
+	function localGlobalDescent(M, L, h, J, b, learningRate = 0.01, maxIterations = 100) {
+		let x = verticesArray.slice();
+		let d = Array(J[0].length).fill(0);
+		
+		for (let iter = 0; iter < maxIterations; iter++) {
+			// Local step: minimizza rispetto a d
+			d = costFunctionLocalApproximated(x, L, J);
+			
+			// Global step: minimizza rispetto a x
+			let grad = gradient(x, M, L, h, J, d, b);
+			for (let i = 0; i < x.length; i++) {
+				x[i] = x[i] - learningRate * grad[i];
+			}
+			
+			console.log(`Iterazione ${iter + 1}: Costo globale = ${costFunctionGlobal(x, M, L, h, J, d, b)}`);
+			
+			if (math.norm(grad) < 1e-6) break;
+		}
+		
+        verticesArray = x;
+	}
+
+	function computeMassMatrix() 
+	{
+		let M = math.diag(massArray);
+		console.log("M size: ", math.size(M));
+		return M;
+	}
+
+	function computeLaplacianMatrix() 
+	{
+        let L = math.zeros(verticesArray.length, verticesArray.length);
+		console.log("L size: ", L.size());
+        for (let spring of springsArray) {
+            let p0 = spring.p0, p1 = spring.p1;
+            L.set([p0, p0], L.get([p0, p0]) + stiffness);  // Rigidità sulla diagonale
+            L.set([p1, p1], L.get([p1, p1]) + stiffness);  // Rigidità sulla diagonale
+            L.set([p0, p1], L.get([p0, p1]) - stiffness);  // Valore negativo per la connessione
+            L.set([p1, p0], L.get([p1, p0]) - stiffness);  // Simmetria
+        }
+        return L;
+    }
+
+	function computeIncidenceMatrix() 
+	{
+        let J = math.zeros(verticesArray.length, springsArray.length);
+		console.log("J size", J.size());
+        for (let i = 0; i < springsArray.length; i++) {
+            let spring = springsArray[i];
+            let p0 = spring.p0, p1 = spring.p1;
+            J.set([p0, i], 1);
+            J.set([p1, i], -1);
+        }
+        return J;
+    }
+
+	function updatePositions() 
+	{
+		for (let i = 0; i < massSprings.length; i++)
+		{
+			for (let j = 0; j < massSprings[i].pos.length; j++)
+			{
+				massSprings[i].pos[j].x = verticesArray[j * 3];
+				massSprings[i].pos[j].y = verticesArray[j * 3 + 1];
+				massSprings[i].pos[j].z = verticesArray[j * 3 + 2];
+			}
+		}
+	}
+
+	function Simulation() 
+	{
+		localGlobalDescent(M, L, timestep / 1000, J, b);
+		updatePositions();
+	}
+
+</script>
 
 <script id="collision" type="text/javascript">
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1554,9 +1643,7 @@ function startPlay() {
             isPlaying = true;
             isBallMoving = true;
 
-            for (let i = 0; i < massSprings.length; i++) {
-                massSprings[i].startSimulation();
-            }
+			startSimulation();
         }
     };
 
@@ -1585,9 +1672,7 @@ function resetAll() {
 }
 
 function restartAllSimulations() {
-    for (let i = 0; i < massSprings.length; i++) {
-        massSprings[i].restartSimulation();
-    }
+	restartSimulation();
 }
 
 function NewScene() {
