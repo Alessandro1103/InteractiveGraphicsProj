@@ -18,17 +18,22 @@ var canvas, gl;
 var perspectiveMatrix;	
 var rotX=0, rotY=0, transY=0, transZ=40;
 var MV, MVP;
-var verticesArray = [];
-var offsetVertices = [0];
-var springsArray = [];
-var massArray = [];
-var b = [];
-let isPlaying = false;
-let isBallMoving = false;
-let keydownListenerMove;
-let keydownListenerSimulate;
+var isPlaying = false;
+var isBallMoving = false;
+var keydownListenerMove;
+var keydownListenerSimulate;
 var timer;
-var M, L, J;
+
+var positions = [];
+var velocities = [];
+var forces = [];
+var springs = [];
+var dt;
+var L, M;
+
+var EPSILON = 0.0001;
+var EPSILON2 = EPSILON*EPSILON;
+DEFAULT_DAMPING= 60
 
 
 
@@ -49,9 +54,8 @@ function InitWebGL() {
 
 	InitMassSprings();
 
-	M = computeMassMatrix();
-	L = computeLaplacianMatrix();
-	J = computeIncidenceMatrix();
+	InitL();
+	InitM();
 
     UpdateCanvasSize();
 }
@@ -223,7 +227,7 @@ function CompileShader( type, source, wgl=gl )
 }
 
 // Multiplies two matrices and returns the result A*B.
-// The arguments A and B are arrays, representing column-major matrices.
+// The arguments A and B are arrays, representing column-major matrices
 function MatrixMult( A, B )
 {
 	var C = Array(16);
@@ -238,6 +242,8 @@ function MatrixMult( A, B )
 	}
 	return C;
 }
+
+
 
 // Returns the inverse of the given 4x4 matrix
 function MatrixInverse( m )
@@ -334,9 +340,6 @@ class MeshDrawer
         this.numTriangles = 0;
 	}
 	setMesh(vertPos, texCoords, normals) {
-		
-		verticesArray.push(vertPos);
-		offsetVertices.push(vertPos.length);
 		
 		if (!this.vertexBuffer) {
 			this.vertexBuffer = gl.createBuffer();
@@ -561,119 +564,6 @@ class Vec3 {
 function ToVec3(a) { return new Vec3(a[0],a[1],a[2]); }
 
 
-function SimTimeStep(dt, positions, velocities, springs, stiffness, damping, particleMass, gravity, restitution, flagcollision, boundingBoxes) {
-    
-    var forces = new Array(positions.length);
-    for (var i = 0; i < forces.length; ++i) forces[i] = new Vec3(0, 0, 0);
-
-    for (var i = 0; i < positions.length; i++) {
-        forces[i] = forces[i].add(gravity.mul(particleMass));
-    }
-    
-    // Molla
-    for (var i = 0; i < springs.length; i++) {
-        let pos0 = positions[springs[i].p0];
-        let pos1 = positions[springs[i].p1];
-        let vel0 = velocities[springs[i].p0];
-        let vel1 = velocities[springs[i].p1];
-        let displacement = pos1.sub(pos0);
-
-        let direction = displacement.unit();
-
-        let stretch = displacement.len() - springs[i].rest;
-        let relativeVelocity = vel1.sub(vel0);
-        
-        let Fs = direction.mul(stretch * stiffness);
-        let Fd = direction.mul(relativeVelocity.dot(direction) * damping);
-
-        forces[springs[i].p0] = forces[springs[i].p0].add(Fs.add(Fd));
-        forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
-    }
-
-    // Gestione delle collisioni con il suolo
-    for (var i = 0; i < positions.length; i++) {
-        if (positions[i].y < 0) {
-            positions[i].y = 0;
-            velocities[i].y *= -restitution;
-        }
-
-        if (positions[i].y == 0) {
-            velocities[i].x *= 0.90;
-            velocities[i].z *= 0.90;
-        }
-
-    }
-
-    if (flagcollision) {
-
-        for (let b = 0; b < boundingBoxes.length; b++) {
-            let boxB = boundingBoxes[b];
-            for (let i = 0; i < positions.length; i++) {
-
-                if (positions[i].x >= boxB.min.x && positions[i].x <= boxB.max.x &&
-                    positions[i].y >= boxB.min.y && positions[i].y <= boxB.max.y &&
-                    positions[i].z >= boxB.min.z && positions[i].z <= boxB.max.z) {
-                        
-                    let initialMomentum = velocities[i].mul(particleMass);
-
-                    let distToMinX = positions[i].x - boxB.min.x;
-                    let distToMaxX = boxB.max.x - positions[i].x;
-                
-                    let distToMinY = positions[i].y - boxB.min.y;
-                    let distToMaxY = boxB.max.y - positions[i].y;
-                
-                    let distToMinZ = positions[i].z - boxB.min.z;
-                    let distToMaxZ = boxB.max.z - positions[i].z;
-                
-                    // Asse minore da dove è avvenuta la collisione
-                    let minDistX = Math.min(distToMinX, distToMaxX);
-                    let minDistY = Math.min(distToMinY, distToMaxY);
-                    let minDistZ = Math.min(distToMinZ, distToMaxZ);
-                
-                    if (minDistX <= minDistY && minDistX <= minDistZ) {
-                        if (distToMinX < distToMaxX) {
-                            positions[i].x = boxB.min.x - 0.001;
-                        } else {
-                            positions[i].x = boxB.max.x + 0.001;
-                        }
-                        velocities[i].x *= -restitution;
-                    } else if (minDistY <= minDistX && minDistY <= minDistZ) {
-                        if (distToMinY < distToMaxY) {
-                            positions[i].y = boxB.min.y - 0.001;
-                        } else {
-                            positions[i].y = boxB.max.y + 0.001;
-                        }
-                        velocities[i].y *= -restitution;
-                    } else {
-                        if (distToMinZ < distToMaxZ) {
-                            positions[i].z = boxB.min.z - 0.001;
-                        } else {
-                            positions[i].z = boxB.max.z + 0.001;
-                        }
-                        velocities[i].z *= -restitution;
-                    }                
-                    
-                    let finalMomentum = velocities[i].mul(particleMass);
-
-                    let impulse = finalMomentum.sub(initialMomentum);
-
-                    let dampingFactor = 0.85; 
-                    impulse = impulse.mul(dampingFactor);
-
-                    forces[i] = forces[i].add(impulse.div(dt));
-                }
-            }
-        }
-    }
-    
-    for (var i = 0; i < positions.length; i++) {
-        let acc = forces[i].div(particleMass);
-        velocities[i] = velocities[i].add(acc.mul(dt));
-        positions[i] = positions[i].add(velocities[i].mul(dt));
-    }
-}
-
-
 class MassSpring {
 
 	constructor(objdef, initialPosition = new Vec3(0,0,0))
@@ -686,20 +576,6 @@ class MassSpring {
 		this.restitution = .8;
 		this.initialPosition = initialPosition;
 		this.setMesh( objdef );
-		this.setMass();
-		this.setInitialB();
-	}
-	setInitialB()
-	{
-		for (let i = 0; i < offsetVertices[-1]; i++) {
-			b.push(this.gravity);
-		}		
-	}
-	setMass()
-	{
-		for (let i = 0; i < verticesArray.legth; i++) {
-			massArray.push(this.mass);
-		}
 	}
 	setMesh( objdef )
 	{
@@ -725,19 +601,39 @@ class MassSpring {
 		this.mesh.computeNormals();
 		this.reset();
 		this.initSprings();
+		this.initPos();
+		this.initVel();
+		this.initForces();
 		DrawScene();
 	}
 	initSprings()
 	{
-		this.springs = [];
 		for ( var i=0; i<this.pos.length; ++i ) {
 			for ( var j=i+1; j<this.pos.length; ++j ) {
 				var r = this.pos[i].sub(this.pos[j]).len();
 				if ( r > .02 ) 
 				{
-					this.springs.push( { p0:i, p1:j, rest:r } );
+					springs.push( { p0:i, p1:j, rest:r, Ks:this.stiffness, Kd:this.damping } );
 				}
 			}
+		}
+	}
+	initPos()
+	{
+		for ( var i=0; i<this.pos.length; ++i ) 
+			positions[i] = ToVec3( this.mesh.vpos[i] );
+	}
+	initVel()
+	{
+		for ( var i=0; i<this.vel.length; ++i ) 
+			velocities[i] = new Vec3(0,0,0);
+	}
+	initForces()
+	{
+		for ( var i=0; i<this.pos.length; ++i ) 
+		{
+			forces[i] = new Vec3(0,0,0);
+			forces[i] = this.gravity;
 		}
 	}
 	reset()
@@ -1142,103 +1038,129 @@ class Floor extends MassSpring {
 		}
 	}
 
-	function costFunctionGlobal(x, M, L, h, J, d, b) 
-	{
-		let term1 = 0.5 * math.dot(math.multiply(math.add(M, math.multiply(h ** 2, L)), x), x);
-		let term2 = h ** 2 * math.dot(math.multiply(J, d), x);
-		let term3 = math.dot(b, x);
-		
-		return term1 - term2 + term3;
-	}
+	function InitL() {
 
-	function costFunctionLocal(x, L, J, f_ext) 
-	{
-		let term1 = 0.5 * math.dot(math.multiply(L, x), x);
-		let term2 = math.dot(math.multiply(J, x), x);  
-		let term3 = math.dot(f_ext, x); 
+		L = new Array(positions.length).fill(0).map(() => new Array(positions.length).fill(0));
 
-		return term1 - term2 + term3;
-	}
 
-	function costFunctionLocalApproximated(x, L, J) 
-	{
-		let d = math.multiply(J, x);  
-		return d;
-	}
+		for (var i = 0; i < springs.length; i++) {
+			var p0 = springs[i].p0;  // First point
+			var p1 = springs[i].p1;  // Second point
+			var Ks = springs[i].Ks;  // Stiffness of this spring
 
-	function localGlobalDescent(M, L, h, J, b, learningRate = 0.01, maxIterations = 100) {
-		let x = verticesArray.slice();
-		let d = Array(J[0].length).fill(0);
-		
-		for (let iter = 0; iter < maxIterations; iter++) {
-			// Local step: minimizza rispetto a d
-			d = costFunctionstartSimulationLocalApproximated(x, L, J);
-			
-			// Global step: minimizza rispetto a x
-			let grad = gradient(x, M, L, h, J, d, b);
-			for (let i = 0; i < x.length; i++) {
-				x[i] = x[i] - learningRate * grad[i];
-			}
-			
-			// console.log(`Iterazione ${iter + 1}: Costo globale = ${costFunctionGlobal(x, M, L, h, J, d, b)}`);
-			
-			if (math.norm(grad) < 1e-6) break;
+			// Update the stiffness matrix for this spring
+			L[p0][p0] += Ks;  // Add to the diagonal for p1
+			L[p1][p1] += Ks;  // Add to the diagonal for p2
+			L[p0][p1] -= Ks;  // Subtract for the connection between p1 and p2
+			L[p1][p0] -= Ks;  // Subtract for the connection between p2 and p1
 		}
-		
-        verticesArray = x;
+	}
+
+	function solveConjugateGradient(A, b)
+	{
+		var i = 0;
+		var r = b - A*x;
+		var d = r;
+		var q;
+		var alpha_new = 0;
+		var alpha = 0;
+		var beta = 0;
+		var delta_old = 0;
+		var delta_new = dot(r,r);
+		var delta0 = delta_new;
+		while(i<i_max && delta_new> EPSILON2)
+		{
+			q = A*d;
+			alpha = delta_new/dot(d,q);
+			x = x + alpha*d;
+			r = r - alpha*q;
+			delta_old = delta_new;
+			delta_new = dot(r,r);	
+			beta = delta_new/delta_old;
+			d = r + beta*d;
+			i++;
+		}			
+	}
+
+	function computeForces() {
+		// Inizializza le forze
+		for (var i = 0; i < positions.length; i++) {
+			// Aggiungi forza di smorzamento
+			forces[i].dec(velocities[i].mul(DEFAULT_DAMPING));  // Sottrai velocità scalata per il fattore di smorzamento
+		}
+
+		// Aggiungi le forze delle molle
+		var deltaP = new Vec3();
+		var deltaV = new Vec3();
+
+		// Calcola le forze delle molle
+		for (var i = 0; i < springs.length; i++) {
+			let pos0 = positions[springs[i].p0];
+			let pos1 = positions[springs[i].p1];
+			let vel0 = velocities[springs[i].p0];
+			let vel1 = velocities[springs[i].p1];
+			let displacement = pos1.sub(pos0);
+
+			let direction = displacement.unit();
+
+			let stretch = displacement.len() - springs[i].rest;
+			let relativeVelocity = vel1.sub(vel0);
+			
+			let Fs = direction.mul(stretch * springs[i].Ks);
+			let Fd = direction.mul(relativeVelocity.dot(direction) * springs[i].Kd);
+
+			forces[springs[i].p0] = forces[springs[i].p0].add(Fs.add(Fd));
+			forces[springs[i].p1] = forces[springs[i].p1].sub(Fs.add(Fd));
+		}
+	}
+
+	function integrateEuler()
+	{
+		// M = [m1, 0, ... , 0]
+		//	   [0, m2, ... , 0]
+		//	   [.., .., .., ..]
+		//	   [0, 0, ... , mn]
+
+		// K = [k11, k12, ... , k1n]
+		//	   [k21, k22, ... , k2n]
+		//	   [..., ..., ... , ...]
+		//	   [kn1, kn2, ... , kmn]
+
+		var deltaT2 = dt*dt;
+		var A = M - deltaT2*K;
+		var b = M*velocities + dt*forces;
+		var newVelocities = solveConiugateGradient(A, b);
+
+		for (var i = 0; i < position.length; i++) {
+			positions[i].add(newVelocities.multiplyScalar(dt));
+
+			if (positions[i].y < 0)
+				positions[i].y = 0
+
+			velocities[i] = newVelocities[i];
+		}
+
 	}
 
 	function computeMassMatrix() 
 	{
-		let M = math.diag(massArray);
-		// console.log("M size: ", math.size(M));
-		return M;
+		// Calcolare la matrice delle masse
 	}
 
 	function computeLaplacianMatrix() 
 	{
-        let L = math.zeros(verticesArray.length, verticesArray.length);
-		// console.log("L size: ", L.size());
-        for (let spring of springsArray) {
-            let p0 = spring.p0, p1 = spring.p1;
-            L.set([p0, p0], L.get([p0, p0]) + stiffness);  // Rigidità sulla diagonale
-            L.set([p1, p1], L.get([p1, p1]) + stiffness);  // Rigidità sulla diagonale
-            L.set([p0, p1], L.get([p0, p1]) - stiffness);  // Valore negativo per la connessione
-            L.set([p1, p0], L.get([p1, p0]) - stiffness);  // Simmetria
-        }
-        return L;
+		// Calcolare la matrice Laplaciana
     }
 
 	function computeIncidenceMatrix() 
 	{
-        let J = math.zeros(verticesArray.length, springsArray.length);
-		// console.log("J size", J.size());
-        for (let i = 0; i < springsArray.length; i++) {
-            let spring = springsArray[i];
-            let p0 = spring.p0, p1 = spring.p1;
-            J.set([p0, i], 1);
-            J.set([p1, i], -1);
-        }
-        return J;
+		// Calcolare la matrice di incidenza
     }
-
-	function updatePositions() 
-	{
-		for (let i = 0; i < massSprings.length; i++)
-		{
-			for (let j = 0; j < massSprings[i].pos.length; j++)
-			{
-				massSprings[i].pos[j].x = verticesArray[j * 3];
-				massSprings[i].pos[j].y = verticesArray[j * 3 + 1];
-				massSprings[i].pos[j].z = verticesArray[j * 3 + 2];
-			}
-		}
-	}
 
 	function Simulation() 
 	{
-		localGlobalDescent(M, L, timestep / 1000, J, b);
-		updatePositions();
+		computeForces();
+		integrateEuler();
 	}
 
 </script>
