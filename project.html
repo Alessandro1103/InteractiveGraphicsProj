@@ -28,7 +28,8 @@ var positions = [];
 var velocities = [];
 var forces = [];
 var springs = [];
-var dt;
+var masses = [];
+var dt = 1/30;
 var L, M;
 
 var EPSILON = 0.0001;
@@ -241,6 +242,287 @@ function MatrixMult( A, B )
 		}
 	}
 	return C;
+}
+
+function multiplyMatrixByScalar(matrix, scalar) {
+    const rows = matrix.length;
+
+    // Controlla se la matrice contiene Vec3
+    const isVec3Matrix = matrix[0] instanceof Vec3;
+
+    // Crea una nuova matrice per il risultato
+    let result = new Array(rows);
+
+    if (isVec3Matrix) {
+        // Caso in cui la matrice contiene Vec3
+        for (let i = 0; i < rows; i++) {
+            result[i] = new Vec3(
+                scalar * matrix[i].x,
+                scalar * matrix[i].y,
+                scalar * matrix[i].z
+            );
+        }
+    } else {
+        // Caso in cui la matrice è una normale matrice di numeri
+        const cols = matrix[0].length;
+        result = new Array(rows).fill(0).map(() => new Array(cols).fill(0));
+
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                result[i][j] = scalar * matrix[i][j];
+            }
+        }
+    }
+
+    return result;
+}
+
+
+function sumMatrices(A, B) 
+{
+    const rowsA = A.length;
+    const rowsB = B.length;
+
+    // Controlla se A e B hanno lo stesso numero di righe
+    if (rowsA !== rowsB) {
+        throw new Error("Le matrici A e B devono avere lo stesso numero di righe.");
+    }
+
+    // Controlla se i primi elementi di A e B sono Vec3
+    const isA_Vec3 = A[0] instanceof Vec3;
+    const isB_Vec3 = B[0] instanceof Vec3;
+
+    // Crea la matrice risultato
+    let result = new Array(rowsA);
+
+    if (isA_Vec3 && isB_Vec3) {
+        // Caso in cui entrambe le matrici contengono Vec3
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i].x + B[i].x,
+                A[i].y + B[i].y,
+                A[i].z + B[i].z
+            );
+        }
+    } 
+    else if (isA_Vec3 && !isB_Vec3) {
+        // Caso in cui A contiene Vec3 e B è una matrice normale
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i].x + B[i][0],
+                A[i].y + B[i][1],
+                A[i].z + B[i][2]
+            );
+        }
+    } 
+    else if (!isA_Vec3 && isB_Vec3) {
+        // Caso in cui B contiene Vec3 e A è una matrice normale
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i][0] + B[i].x,
+                A[i][1] + B[i].y,
+                A[i][2] + B[i].z
+            );
+        }
+    } 
+    else {
+        // Caso in cui entrambe sono matrici normali
+        const colsA = A[0].length;
+        const colsB = B[0].length;
+
+        if (colsA !== colsB) {
+            throw new Error("Le matrici A e B devono avere lo stesso numero di colonne.");
+        }
+
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Array(colsA);
+            for (let j = 0; j < colsA; j++) {
+                result[i][j] = A[i][j] + B[i][j];
+            }
+        }
+    }
+
+    return result;
+}
+
+
+function subtractMatrices(A, B) 
+{
+    const rowsA = A.length;
+    const rowsB = B.length;
+
+    // Controlla se A e B hanno lo stesso numero di righe
+    if (rowsA !== rowsB) {
+        throw new Error("Le matrici A e B devono avere lo stesso numero di righe.");
+    }
+
+    // Controlla se i primi elementi di A e B sono Vec3
+    const isA_Vec3 = A[0] instanceof Vec3;
+    const isB_Vec3 = B[0] instanceof Vec3;
+
+    // Crea la matrice risultato
+    let result = new Array(rowsA);
+
+    if (isA_Vec3 && isB_Vec3) {
+        // Caso in cui entrambe le matrici contengono Vec3
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i].x - B[i].x,
+                A[i].y - B[i].y,
+                A[i].z - B[i].z
+            );
+        }
+    } 
+    else if (isA_Vec3 && !isB_Vec3) {
+        // Caso in cui A contiene Vec3 e B è una matrice normale
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i].x - B[i][0],
+                A[i].y - B[i][1],
+                A[i].z - B[i][2]
+            );
+        }
+    } 
+    else if (!isA_Vec3 && isB_Vec3) {
+        // Caso in cui B contiene Vec3 e A è una matrice normale
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Vec3(
+                A[i][0] - B[i].x,
+                A[i][1] - B[i].y,
+                A[i][2] - B[i].z
+            );
+        }
+    } 
+    else {
+        // Caso in cui entrambe sono matrici normali
+        const colsA = A[0].length;
+        const colsB = B[0].length;
+
+        if (colsA !== colsB) {
+            throw new Error("Le matrici A e B devono avere lo stesso numero di colonne.");
+        }
+
+        for (let i = 0; i < rowsA; i++) {
+            result[i] = new Array(colsA);
+            for (let j = 0; j < colsA; j++) {
+                result[i][j] = A[i][j] - B[i][j];
+            }
+        }
+    }
+
+    return result;
+}
+
+function matrixDot(v1, v2) {
+    if (v1.length !== v2.length) {
+        throw new Error("I due vettori devono avere la stessa dimensione.");
+    }
+
+    let result = 0;
+    
+    for (let i = 0; i < v1.length; i++) {
+        // Caso 1: Entrambi sono Vec3
+        if (v1[i] instanceof Vec3 && v2[i] instanceof Vec3) {
+            result += v1[i].dot(v2[i]);
+        }
+        // Caso 2: v1 è Vec3 e v2 è un array di 3 elementi (numero)
+        else if (v1[i] instanceof Vec3 && Array.isArray(v2[i]) && v2[i].length === 3) {
+            result += v1[i].x * v2[i][0] + v1[i].y * v2[i][1] + v1[i].z * v2[i][2];
+        }
+        // Caso 3: v2 è Vec3 e v1 è un array di 3 elementi (numero)
+        else if (v2[i] instanceof Vec3 && Array.isArray(v1[i]) && v1[i].length === 3) {
+            result += v1[i][0] * v2[i].x + v1[i][1] * v2[i].y + v1[i][2] * v2[i].z;
+        }
+        // Caso 4: Entrambi sono array di 3 elementi
+        else if (Array.isArray(v1[i]) && v1[i].length === 3 && Array.isArray(v2[i]) && v2[i].length === 3) {
+            result += v1[i][0] * v2[i][0] + v1[i][1] * v2[i][1] + v1[i][2] * v2[i][2];
+        } 
+        // Caso di errore se un formato non supportato viene trovato
+        else {
+            throw new Error("Formato non supportato: gli elementi devono essere Vec3 o array di 3 elementi.");
+        }
+    }
+    
+    return result;
+}
+
+
+
+
+function matrixMultiply(A, B) {
+    var rowsA, colsA, rowsB, colsB;
+
+    // Controlla se A o B contengono Vec3
+    const isA_Vec3 = A[0] instanceof Vec3;
+    const isB_Vec3 = B[0] instanceof Vec3;
+
+    // Moltiplicazione se A contiene Vec3
+    if (isA_Vec3) {
+        rowsA = A.length;
+        colsA = 3; // Vec3 ha 3 componenti (x, y, z)
+        rowsB = B.length;
+        colsB = B[0].length;
+
+        if (colsA !== rowsB) {
+            throw new Error("Il numero di colonne della matrice A deve essere uguale al numero di righe della matrice B.");
+        }
+
+        // Crea la matrice risultato C con le dimensioni appropriate (rowsA x colsB)
+        let C = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0));
+
+        for (let i = 0; i < rowsA; i++) {
+            for (let j = 0; j < colsB; j++) {
+                C[i][j] = A[i].x * B[0][j] + A[i].y * B[1][j] + A[i].z * B[2][j];
+            }
+        }
+        return C;
+    }
+    // Moltiplicazione se B contiene Vec3
+    else if (isB_Vec3) {
+        rowsA = A.length;
+        colsA = A[0].length;
+        rowsB = B.length;
+        colsB = 3; // Vec3 ha 3 componenti (x, y, z)
+
+        if (colsA !== rowsB) {
+            throw new Error("Il numero di colonne della matrice A deve essere uguale al numero di righe della matrice B.");
+        }
+
+        // Crea la matrice risultato C con le dimensioni appropriate (rowsA x colsB)
+        let C = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0));
+
+        for (let i = 0; i < rowsA; i++) {
+            for (let j = 0; j < colsB; j++) {
+                for (let k = 0; k < colsA; k++) {
+                    C[i][j] += A[i][k] * B[k].x + A[i][k] * B[k].y + A[i][k] * B[k].z;
+                }
+            }
+        }
+        return C;
+    }
+    // Moltiplicazione normale tra matrici
+    else {
+        rowsA = A.length;
+        colsA = A[0].length;
+        rowsB = B.length;
+        colsB = B[0].length;
+
+        if (colsA !== rowsB) {
+            throw new Error("Il numero di colonne della matrice A deve essere uguale al numero di righe della matrice B.");
+        }
+
+        // Crea la matrice risultato C con le dimensioni appropriate (rowsA x colsB)
+        let C = new Array(rowsA).fill(0).map(() => new Array(colsB).fill(0));
+
+        for (let i = 0; i < rowsA; i++) {
+            for (let j = 0; j < colsB; j++) {
+                for (let k = 0; k < colsA; k++) {
+                    C[i][j] += A[i][k] * B[k][j];
+                }
+            }
+        }
+        return C;
+    }
 }
 
 
@@ -562,7 +844,7 @@ class Vec3 {
 }
 
 function ToVec3(a) { return new Vec3(a[0],a[1],a[2]); }
-
+function ToArray(a) { return [a.x,a.y,a.z]; }
 
 class MassSpring {
 
@@ -576,6 +858,13 @@ class MassSpring {
 		this.restitution = .8;
 		this.initialPosition = initialPosition;
 		this.setMesh( objdef );
+		this.addMasses();
+	}
+	addMasses()
+	{
+		for ( var i=0; i<this.pos.length; ++i ) {
+			masses.push( this.mass );
+		}
 	}
 	setMesh( objdef )
 	{
@@ -621,19 +910,18 @@ class MassSpring {
 	initPos()
 	{
 		for ( var i=0; i<this.pos.length; ++i ) 
-			positions[i] = ToVec3( this.mesh.vpos[i] );
+			positions.push( ToVec3( this.mesh.vpos[i] ) );
 	}
 	initVel()
 	{
 		for ( var i=0; i<this.vel.length; ++i ) 
-			velocities[i] = new Vec3(0,0,0);
+			velocities.push( new Vec3(0,0,0) );
 	}
 	initForces()
 	{
 		for ( var i=0; i<this.pos.length; ++i ) 
 		{
-			forces[i] = new Vec3(0,0,0);
-			forces[i] = this.gravity;
+			forces.push( this.gravity );
 		}
 	}
 	reset()
@@ -1038,7 +1326,8 @@ class Floor extends MassSpring {
 		}
 	}
 
-	function InitL() {
+	function InitL() 
+	{
 
 		L = new Array(positions.length).fill(0).map(() => new Array(positions.length).fill(0));
 
@@ -1056,28 +1345,40 @@ class Floor extends MassSpring {
 		}
 	}
 
+	function InitM() 
+	{
+		M = new Array(masses.length).fill(0).map(() => new Array(masses.length).fill(0));
+
+		for (let i = 0; i < masses.length; i++) {
+			M[i][i] = masses[i];
+		}
+
+	}
+
 	function solveConjugateGradient(A, b)
 	{
+
 		var i = 0;
-		var r = b - A*x;
+		var r = subtractMatrices(b, matrixMultiply(A, velocities));
 		var d = r;
 		var q;
 		var alpha_new = 0;
 		var alpha = 0;
 		var beta = 0;
 		var delta_old = 0;
-		var delta_new = dot(r,r);
+
+		var delta_new = matrixDot(r,r);
 		var delta0 = delta_new;
-		while(i<i_max && delta_new> EPSILON2)
+		while(i<A.length && delta_new> EPSILON2)
 		{
-			q = A*d;
-			alpha = delta_new/dot(d,q);
-			x = x + alpha*d;
-			r = r - alpha*q;
+			q = matrixMultiply(A, d);
+			alpha = delta_new/matrixDot(d,q);
+			velocities = sumMatrices( velocities, multiplyMatrixByScalar(d, alpha) );
+			r = subtractMatrices(r, multiplyMatrixByScalar(q, alpha));
 			delta_old = delta_new;
-			delta_new = dot(r,r);	
+			delta_new = matrixDot(r,r);	
 			beta = delta_new/delta_old;
-			d = r + beta*d;
+			d = sumMatrices( r, multiplyMatrixByScalar(d, beta) );
 			i++;
 		}			
 	}
@@ -1121,15 +1422,23 @@ class Floor extends MassSpring {
 		//	   [.., .., .., ..]
 		//	   [0, 0, ... , mn]
 
-		// K = [k11, k12, ... , k1n]
+		// L = [k11, k12, ... , k1n]
 		//	   [k21, k22, ... , k2n]
 		//	   [..., ..., ... , ...]
 		//	   [kn1, kn2, ... , kmn]
 
+		// velocities, forces, positions non sono matrici ma vettori di vec3
+
+
 		var deltaT2 = dt*dt;
-		var A = M - deltaT2*K;
-		var b = M*velocities + dt*forces;
-		var newVelocities = solveConiugateGradient(A, b);
+
+		var A = subtractMatrices(M, multiplyMatrixByScalar(L, deltaT2));
+
+		var b = sumMatrices(matrixMultiply(M, velocities), multiplyMatrixByScalar(forces, dt));
+
+		// console.log(A, b);
+
+		var newVelocities = solveConjugateGradient(A, b);
 
 		for (var i = 0; i < position.length; i++) {
 			positions[i].add(newVelocities.multiplyScalar(dt));
@@ -1141,21 +1450,6 @@ class Floor extends MassSpring {
 		}
 
 	}
-
-	function computeMassMatrix() 
-	{
-		// Calcolare la matrice delle masse
-	}
-
-	function computeLaplacianMatrix() 
-	{
-		// Calcolare la matrice Laplaciana
-    }
-
-	function computeIncidenceMatrix() 
-	{
-		// Calcolare la matrice di incidenza
-    }
 
 	function Simulation() 
 	{
