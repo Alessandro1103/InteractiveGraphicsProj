@@ -29,7 +29,7 @@ var velocities = [];
 var forces = [];
 var springs = [];
 var masses = [];
-var dt = 1/30;
+var timestep;
 var L, M;
 
 var EPSILON = 0.0001;
@@ -1287,7 +1287,7 @@ class Floor extends MassSpring {
 	
 	function startSimulation() 
 	{
-		var timestep = document.getElementById('timestep').value;
+		timestep = document.getElementById('timestep').value;
 		if (!isSimulationRunning()) {
 				timer = setInterval(function() {
 				Simulation();
@@ -1429,19 +1429,20 @@ class Floor extends MassSpring {
 
 		// velocities, forces, positions non sono matrici ma vettori di vec3
 
+		// console.log(timestep);
 
-		var deltaT2 = dt*dt;
+		var deltaT2 = timestep*timestep;
 
 		var A = subtractMatrices(M, multiplyMatrixByScalar(L, deltaT2));
 
-		var b = sumMatrices(matrixMultiply(M, velocities), multiplyMatrixByScalar(forces, dt));
+		var b = sumMatrices(matrixMultiply(M, velocities), multiplyMatrixByScalar(forces, timestep));
 
 		// console.log(A, b);
 
 		var newVelocities = solveConjugateGradient(A, b);
 
-		for (var i = 0; i < position.length; i++) {
-			positions[i].add(newVelocities.multiplyScalar(dt));
+		for (var i = 0; i < positions.length; i++) {
+			positions[i].add(newVelocities.multiplyScalar(timestep));
 
 			if (positions[i].y < 0)
 				positions[i].y = 0
