@@ -180,16 +180,16 @@ function InitMassSprings() {
     let pin10 = new Pin(pinObj, new Vec3(initialX + 3 * pinDistance, pinHeight, initialZ + 3 * rowDistance));
 
     massSprings.push(floor);
-    massSprings.push(pin1);
-    massSprings.push(pin2);
-    massSprings.push(pin3);
-    massSprings.push(pin4);
-    massSprings.push(pin5);
-    massSprings.push(pin6);
-    massSprings.push(pin7);
-    massSprings.push(pin8);
-    massSprings.push(pin9);
-    massSprings.push(pin10);
+    // massSprings.push(pin1);
+    // massSprings.push(pin2);
+    // massSprings.push(pin3);
+    // massSprings.push(pin4);
+    // massSprings.push(pin5);
+    // massSprings.push(pin6);
+    // massSprings.push(pin7);
+    // massSprings.push(pin8);
+    // massSprings.push(pin9);
+    // massSprings.push(pin10);
     massSprings.push(bowlingBall);
 
     // Texture per gli oggetti
@@ -1288,6 +1288,7 @@ class Floor extends MassSpring {
 	function startSimulation() 
 	{
 		timestep = document.getElementById('timestep').value;
+		// console.log(timestep);
 		if (!isSimulationRunning()) {
 				timer = setInterval(function() {
 				Simulation();
