@@ -723,7 +723,7 @@ class Skybox
 		this.viewDirectionProjectionInverseLocation = gl.getUniformLocation(this.prog, "u_viewDirectionProjectionInverse");
 		
 		this.positionBuffer = gl.createBuffer();
-		var positions = new Float32Array([
+		var boxShape = new Float32Array([
 			-1, -1,
 			1, -1,
 			-1,  1,
@@ -732,7 +732,7 @@ class Skybox
 			1,  1,
 		]);
 		gl.bindBuffer(gl.ARRAY_BUFFER, this.positionBuffer);
-		gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+		gl.bufferData(gl.ARRAY_BUFFER, boxShape, gl.STATIC_DRAW);
 
 		// Create and configure the texture
 		this.texture = gl.createTexture();
@@ -1358,7 +1358,6 @@ class Floor extends MassSpring {
 
 	function solveConjugateGradient(A, b)
 	{
-
 		var i = 0;
 		var r = subtractMatrices(b, matrixMultiply(A, velocities));
 		var d = r;
@@ -1370,19 +1369,23 @@ class Floor extends MassSpring {
 
 		var delta_new = matrixDot(r,r);
 		var delta0 = delta_new;
-		while(i<A.length && delta_new> EPSILON2)
+		while(i < A.length && delta_new > EPSILON2)
 		{
 			q = matrixMultiply(A, d);
-			alpha = delta_new/matrixDot(d,q);
-			velocities = sumMatrices( velocities, multiplyMatrixByScalar(d, alpha) );
+			alpha = delta_new / matrixDot(d,q);
+			velocities = sumMatrices(velocities, multiplyMatrixByScalar(d, alpha));
 			r = subtractMatrices(r, multiplyMatrixByScalar(q, alpha));
 			delta_old = delta_new;
-			delta_new = matrixDot(r,r);	
-			beta = delta_new/delta_old;
-			d = sumMatrices( r, multiplyMatrixByScalar(d, beta) );
+			delta_new = matrixDot(r,r);    
+			beta = delta_new / delta_old;
+			d = sumMatrices(r, multiplyMatrixByScalar(d, beta));
 			i++;
-		}			
+		}
+		
+		// Restituisce il risultato aggiornato (le nuove velocità)
+		return velocities;
 	}
+
 
 	function computeForces() {
 		// Inizializza le forze
@@ -1443,7 +1446,7 @@ class Floor extends MassSpring {
 		var newVelocities = solveConjugateGradient(A, b);
 
 		for (var i = 0; i < positions.length; i++) {
-			positions[i].add(newVelocities.multiplyScalar(timestep));
+			positions[i].add(multiplyMatrixByScalar(newVelocities, timestep));
 
 			if (positions[i].y < 0)
 				positions[i].y = 0
